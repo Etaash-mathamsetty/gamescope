@@ -37,6 +37,7 @@ extern bool steamMode;
 extern bool g_bFirstFrame;
 
 SDL_Window *g_SDLWindow;
+std::vector<SDL_Window *> g_SDLWindows;
 
 enum UserEvents
 {
@@ -96,12 +97,66 @@ void updateOutputRefresh( void )
 {
 	int display_index = 0;
 	SDL_DisplayMode mode = { SDL_PIXELFORMAT_UNKNOWN, 0, 0, 0, 0 };
+	int refresh_rate = INT32_MAX;
 
-	display_index = SDL_GetWindowDisplayIndex( g_SDLWindow );
-	if ( SDL_GetDesktopDisplayMode( display_index, &mode ) == 0 )
+	for(SDL_Window* display : g_SDLWindows)
 	{
-		g_nOutputRefresh = mode.refresh_rate;
+		if ( SDL_GetWindowDisplayMode( display, &mode ) == 0)
+		{
+			refresh_rate = std::min( refresh_rate, mode.refresh_rate );
+		}
 	}
+
+	g_nOutputRefresh = refresh_rate;
+}
+
+void updateOutputResolution( void )
+{
+		// Update g_nOutputWidthPts.
+
+		int lowest_x = INT32_MAX;
+		int lowest_y = INT32_MAX;
+		int highest_x = -INT32_MAX;
+		int highest_y = -INT32_MAX;
+	#if SDL_VERSION_ATLEAST(2, 26, 0)
+		int highest_x_px = -INT32_MAX;
+		int highest_y_px = -INT32_MAX;
+	#endif
+
+		for(SDL_Window* display : g_SDLWindows)
+		{
+			int x, y;
+			int width, height;
+			SDL_GetWindowPosition( display, &x, &y );
+			SDL_GetWindowSize( display, &width, &height);
+
+			if ( x < lowest_x )
+				lowest_x = x;
+			if ( y < lowest_y )
+				lowest_y = y;
+
+			if ( (x + width) > highest_x )
+				highest_x = x + width;
+			if ( (y + height) > highest_y )
+				highest_y = y + height;
+
+		#if SDL_VERSION_ATLEAST(2, 26, 0)
+			SDL_GetWindowSizeInPixels( display, &width, &height );
+
+			if ( (x + width) > highest_x_px )
+				highest_x_px = x + width;
+			if ( (y + height) > highest_y_px )
+				highest_y_px = y + height;
+		#endif
+		}
+
+		g_nOutputWidthPts = highest_x - lowest_x;
+		g_nOutputHeightPts = highest_y - lowest_y;
+
+	#if SDL_VERSION_ATLEAST(2, 26, 0)
+		g_nOutputWidth = highest_x_px - lowest_x;
+		g_nOutputHeight = highest_y_px - lowest_y;
+	#endif
 }
 
 extern bool g_bForceRelativeMouse;
@@ -125,7 +180,7 @@ void inputSDLThreadRun( void )
 		nSDLWindowFlags |= SDL_WINDOW_BORDERLESS;
 	}
 
-	if ( g_bFullscreen == true )
+	if ( g_bFullscreen == true || g_bMultiDisplay == true)
 	{
 		nSDLWindowFlags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 	}
@@ -135,33 +190,29 @@ void inputSDLThreadRun( void )
 		nSDLWindowFlags |= SDL_WINDOW_KEYBOARD_GRABBED;
 	}
 
-	g_SDLWindow = SDL_CreateWindow( DEFAULT_TITLE,
-							   SDL_WINDOWPOS_UNDEFINED,
-							SDL_WINDOWPOS_UNDEFINED,
+	int num_displays = 1;
+
+	if(g_bMultiDisplay)
+		num_displays = SDL_GetNumVideoDisplays();
+
+	for(int i = 0; i < num_displays; i++)
+	{
+		g_SDLWindows.push_back(SDL_CreateWindow(DEFAULT_TITLE,
+							SDL_WINDOWPOS_UNDEFINED_DISPLAY(i),
+							SDL_WINDOWPOS_UNDEFINED_DISPLAY(i),
 							g_nOutputWidth,
 							g_nOutputHeight,
-							nSDLWindowFlags );
+							nSDLWindowFlags))
 
-	if ( g_SDLWindow == nullptr )
-	{
-		fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
-		g_SDLInitLock.unlock();
-		return;
+		if ( g_SDLWindows[i] == nullptr )
+		{
+			fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
+			g_SDLInitLock.unlock();
+			return;
+		}
 	}
 
-	// Update g_nOutputWidthPts.
-	{
-		int width, height;
-		SDL_GetWindowSize( g_SDLWindow, &width, &height );
-		g_nOutputWidthPts = width;
-		g_nOutputHeightPts = height;
-
-	#if SDL_VERSION_ATLEAST(2, 26, 0)
-		SDL_GetWindowSizeInPixels( g_SDLWindow, &width, &height );
-	#endif
-		g_nOutputWidth = width;
-		g_nOutputHeight = height;
-	}
+	updateOutputResolution();
 
 	if ( g_bForceRelativeMouse )
 	{
@@ -263,7 +314,8 @@ void inputSDLThreadRun( void )
 					{
 						case KEY_F:
 							g_bFullscreen = !g_bFullscreen;
-							SDL_SetWindowFullscreen( g_SDLWindow, g_bFullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0 );
+							for(SDL_Window* window : g_SDLWindows)
+								SDL_SetWindowFullscreen( window, g_bFullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0 );
 							break;
 						case KEY_N:
 							g_wantedUpscaleFilter = GamescopeUpscaleFilter::PIXEL;
@@ -276,7 +328,7 @@ void inputSDLThreadRun( void )
 								GamescopeUpscaleFilter::LINEAR : GamescopeUpscaleFilter::FSR;
 							break;
 						case KEY_Y:
-							g_wantedUpscaleFilter = (g_wantedUpscaleFilter == GamescopeUpscaleFilter::NIS) ? 
+							g_wantedUpscaleFilter = (g_wantedUpscaleFilter == GamescopeUpscaleFilter::NIS) ?
 								GamescopeUpscaleFilter::LINEAR : GamescopeUpscaleFilter::NIS;
 							break;
 						case KEY_I:
@@ -290,7 +342,10 @@ void inputSDLThreadRun( void )
 							break;
 						case KEY_G:
 							g_bGrabbed = !g_bGrabbed;
-							SDL_SetWindowKeyboardGrab( g_SDLWindow, g_bGrabbed ? SDL_TRUE : SDL_FALSE );
+							for(SDL_Window* window : g_SDLWindows)
+							{
+								SDL_SetWindowKeyboardGrab( window, g_bGrabbed ? SDL_TRUE : SDL_FALSE );
+							}
 							g_bUpdateSDLWindowTitle = true;
 
 							SDL_Event event;
@@ -327,19 +382,8 @@ void inputSDLThreadRun( void )
 						updateOutputRefresh();
 						break;
 					case SDL_WINDOWEVENT_SIZE_CHANGED:
-						int width, height;
-						SDL_GetWindowSize( g_SDLWindow, &width, &height );
-						g_nOutputWidthPts = width;
-						g_nOutputHeightPts = height;
-
-#if SDL_VERSION_ATLEAST(2, 26, 0)
-						SDL_GetWindowSizeInPixels( g_SDLWindow, &width, &height );
-#endif
-						g_nOutputWidth = width;
-						g_nOutputHeight = height;
-
+						updateOutputResolution();
 						updateOutputRefresh();
-
 						break;
 					case SDL_WINDOWEVENT_FOCUS_LOST:
 						g_nNestedRefresh = g_nNestedUnfocusedRefresh;
@@ -374,9 +418,12 @@ void inputSDLThreadRun( void )
 
 							window_title = &tmp_title;
 						}
-						SDL_SetWindowTitle( g_SDLWindow, window_title->c_str() );
+						for(SDL_Window* window : g_SDLWindows)
+						{
+							SDL_SetWindowTitle( window, window_title->c_str() );
+						}
 					}
-					
+
 					if ( g_bUpdateSDLWindowIcon )
 					{
 						if ( icon_surface )
@@ -388,7 +435,7 @@ void inputSDLThreadRun( void )
 						if ( g_SDLWindowIcon && g_SDLWindowIcon->size() >= 3 )
 						{
 							const uint32_t width = (*g_SDLWindowIcon)[0];
-        					const uint32_t height = (*g_SDLWindowIcon)[1];
+    	   					const uint32_t height = (*g_SDLWindowIcon)[1];
 
 							icon_surface = SDL_CreateRGBSurfaceFrom(
 								&(*g_SDLWindowIcon)[2],
@@ -397,7 +444,10 @@ void inputSDLThreadRun( void )
 								0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
 						}
 
-						SDL_SetWindowIcon( g_SDLWindow, icon_surface );
+						for(SDL_Window* window : g_SDLWindows)
+						{
+							SDL_SetWindowIcon( window, icon_surface );
+						}
 					}
 					g_SDLWindowTitleLock.unlock();
 				}
@@ -418,11 +468,13 @@ void inputSDLThreadRun( void )
 
 						if ( g_bWindowShown )
 						{
-							SDL_ShowWindow( g_SDLWindow );
+							for(SDL_Window* window : g_SDLWindows)
+								SDL_ShowWindow( window );
 						}
 						else
 						{
-							SDL_HideWindow( g_SDLWindow );
+							for(SDL_Window* window : g_SDLWindows)
+								SDL_HideWindow( window );
 						}
 					}
 				}

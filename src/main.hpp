@@ -20,6 +20,7 @@ extern int g_nOutputRefresh; // Hz
 extern bool g_bOutputHDREnabled;
 
 extern bool g_bFullscreen;
+extern bool g_bMultiDisplay;
 
 extern bool g_bGrabbed;
 

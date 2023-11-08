@@ -183,6 +183,7 @@ const char usage[] =
 	"  -f, --fullscreen               make the window fullscreen\n"
 	"  -g, --grab                     grab the keyboard\n"
 	"  --force-grab-cursor            always use relative mouse mode instead of flipping dependent on cursor visibility.\n"
+	"  --multi-display                enable multi-display support\n"
 	"\n"
 	"Embedded mode options:\n"
 	"  -O, --prefer-output            list of connectors in order of preference\n"
@@ -253,6 +254,7 @@ bool g_bOutputHDREnabled = false;
 
 bool g_bFullscreen = false;
 bool g_bForceRelativeMouse = false;
+bool g_bMultiDisplay = false;
 
 bool g_bIsNested = false;
 bool g_bHeadless = false;
@@ -637,6 +639,10 @@ int main(int argc, char **argv)
 					g_bIsNested = true;
 				}
 #endif
+				else if (stdcmp(opt_name, "multi-display")) {
+					g_bMultiDisplay = true;
+					g_bIsNested = true;
+				}
 				break;
 			case '?':
 				fprintf( stderr, "See --help for a list of options.\n" );
