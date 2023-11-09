@@ -20,4 +20,4 @@ void sdlwindow_visible( bool bVisible );
 void sdlwindow_grab( bool bGrab );
 void sdlwindow_cursor(std::shared_ptr<std::vector<uint32_t>> pixels, uint32_t width, uint32_t height, uint32_t xhot, uint32_t yhot);
 
-extern SDL_Window *g_SDLWindow;
+extern std::vector<SDL_Window *> g_SDLWindows;

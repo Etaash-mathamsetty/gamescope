@@ -232,7 +232,7 @@ uint32_t DRMFormatGetBPP( uint32_t nDRMFormat )
 	return false;
 }
 
-bool CVulkanDevice::BInit(VkInstance instance, VkSurfaceKHR surface)
+bool CVulkanDevice::BInit(VkInstance instance, std::vector<VkSurfaceKHR> surfaces)
 {
 	assert(instance);
 	assert(!m_bInitialized);
@@ -242,7 +242,7 @@ bool CVulkanDevice::BInit(VkInstance instance, VkSurfaceKHR surface)
 	VULKAN_INSTANCE_FUNCTIONS
 	#undef VK_FUNC
 
-	if (!selectPhysDev(surface))
+	if (!selectPhysDev(surfaces))
 		return false;
 	if (!createDevice())
 		return false;
@@ -265,7 +265,7 @@ bool CVulkanDevice::BInit(VkInstance instance, VkSurfaceKHR surface)
 	return true;
 }
 
-bool CVulkanDevice::selectPhysDev(VkSurfaceKHR surface)
+bool CVulkanDevice::selectPhysDev(std::vector<VkSurfaceKHR> surfaces)
 {
 	uint32_t deviceCount = 0;
 	vk.EnumeratePhysicalDevices(instance(), &deviceCount, nullptr);
@@ -313,21 +313,24 @@ bool CVulkanDevice::selectPhysDev(VkSurfaceKHR surface)
 			    (g_preferVendorID == deviceProperties.vendorID && g_preferDeviceID == deviceProperties.deviceID))
 			{
 				// if we have a surface, check that the queue family can actually present on it
-				if (surface) {
+				if (surfaces.size() > 0) {
 					VkBool32 canPresent = false;
-					vk.GetPhysicalDeviceSurfaceSupportKHR( cphysDev, generalIndex, surface, &canPresent );
-					if ( !canPresent )
+					for(VkSurfaceKHR surface : surfaces)
 					{
-						vk_log.infof( "physical device %04x:%04x queue doesn't support presenting on our surface, testing next one..", deviceProperties.vendorID, deviceProperties.deviceID );
-						continue;
-					}
-					if (computeOnlyIndex != ~0u)
-					{
-						vk.GetPhysicalDeviceSurfaceSupportKHR( cphysDev, computeOnlyIndex, surface, &canPresent );
+						vk.GetPhysicalDeviceSurfaceSupportKHR( cphysDev, generalIndex, surface, &canPresent );
 						if ( !canPresent )
 						{
-							vk_log.debugf( "physical device %04x:%04x compute queue doesn't support presenting on our surface, using graphics queue", deviceProperties.vendorID, deviceProperties.deviceID );
-							computeOnlyIndex = ~0u;
+							vk_log.infof( "physical device %04x:%04x queue doesn't support presenting on our surface, testing next one..", deviceProperties.vendorID, deviceProperties.deviceID );
+							continue;
+						}
+						if (computeOnlyIndex != ~0u)
+						{
+							vk.GetPhysicalDeviceSurfaceSupportKHR( cphysDev, computeOnlyIndex, surface, &canPresent );
+							if ( !canPresent )
+							{
+								vk_log.debugf( "physical device %04x:%04x compute queue doesn't support presenting on our surface, using graphics queue", deviceProperties.vendorID, deviceProperties.deviceID );
+								computeOnlyIndex = ~0u;
+							}
 						}
 					}
 				}
@@ -3177,9 +3180,9 @@ VkInstance vulkan_create_instance( void )
 	return instance;
 }
 
-bool vulkan_init( VkInstance instance, VkSurfaceKHR surface )
+bool vulkan_init( VkInstance instance, std::vector<VkSurfaceKHR> surfaces )
 {
-	if (!g_device.BInit(instance, surface))
+	if (!g_device.BInit(instance, surfaces))
 		return false;
 
 	if (!init_nis_data())

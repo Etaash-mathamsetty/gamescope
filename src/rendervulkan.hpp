@@ -361,7 +361,7 @@ namespace CompositeDebugFlag
 };
 
 VkInstance vulkan_create_instance(void);
-bool vulkan_init(VkInstance instance, VkSurfaceKHR surface);
+bool vulkan_init(VkInstance instance, std::vector<VkSurfaceKHR> surfaces);
 bool vulkan_init_formats(void);
 bool vulkan_make_output(VkSurfaceKHR surface);
 
@@ -695,7 +695,7 @@ return (what + to - 1) & ~(to - 1);
 class CVulkanDevice
 {
 public:
-	bool BInit(VkInstance instance, VkSurfaceKHR surface);
+	bool BInit(VkInstance instance, std::vector<VkSurfaceKHR> surface);
 
 	VkSampler sampler(SamplerState key);
 	VkPipeline pipeline(ShaderType type, uint32_t layerCount = 1, uint32_t ycbcrMask = 0, uint32_t blur_layers = 0, uint32_t colorspace_mask = 0, uint32_t output_eotf = EOTF_Gamma22, bool itm_enable = false);
@@ -761,7 +761,7 @@ public:
 protected:
 	friend class CVulkanCmdBuffer;
 
-	bool selectPhysDev(VkSurfaceKHR surface);
+	bool selectPhysDev(std::vector<VkSurfaceKHR> surfaces);
 	bool createDevice();
 	bool createLayouts();
 	bool createPools();

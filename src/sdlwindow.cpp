@@ -95,7 +95,6 @@ static inline int SDLButtonToLinuxButton( int SDLButton )
 
 void updateOutputRefresh( void )
 {
-	int display_index = 0;
 	SDL_DisplayMode mode = { SDL_PIXELFORMAT_UNKNOWN, 0, 0, 0, 0 };
 	int refresh_rate = INT32_MAX;
 
@@ -192,8 +191,10 @@ void inputSDLThreadRun( void )
 
 	int num_displays = 1;
 
-	if(g_bMultiDisplay)
+	if(g_bMultiDisplay == true)
 		num_displays = SDL_GetNumVideoDisplays();
+
+	fprintf(stderr, "SDL: num_displays: %d %d\n", num_displays, g_bMultiDisplay);
 
 	for(int i = 0; i < num_displays; i++)
 	{
@@ -202,7 +203,7 @@ void inputSDLThreadRun( void )
 							SDL_WINDOWPOS_UNDEFINED_DISPLAY(i),
 							g_nOutputWidth,
 							g_nOutputHeight,
-							nSDLWindowFlags))
+							nSDLWindowFlags));
 
 		if ( g_SDLWindows[i] == nullptr )
 		{

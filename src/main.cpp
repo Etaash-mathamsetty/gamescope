@@ -67,6 +67,7 @@ const struct option *gamescope_options = (struct option[]){
 	{ "nested-unfocused-refresh", required_argument, nullptr, 'o' },
 	{ "borderless", no_argument, nullptr, 'b' },
 	{ "fullscreen", no_argument, nullptr, 'f' },
+	{ "multi-display", no_argument, nullptr, 0 },
 	{ "grab", no_argument, nullptr, 'g' },
 	{ "force-grab-cursor", no_argument, nullptr, 0 },
 
@@ -639,7 +640,7 @@ int main(int argc, char **argv)
 					g_bIsNested = true;
 				}
 #endif
-				else if (stdcmp(opt_name, "multi-display")) {
+				else if (strcmp(opt_name, "multi-display") == 0) {
 					g_bMultiDisplay = true;
 					g_bIsNested = true;
 				}
@@ -747,7 +748,7 @@ int main(int argc, char **argv)
 	}
 
 	VkInstance instance = vulkan_create_instance();
-	VkSurfaceKHR surface = VK_NULL_HANDLE;
+	std::vector<VkSurfaceKHR> surfaces;
 
 	if ( !BIsNested() )
 	{
@@ -773,16 +774,26 @@ int main(int argc, char **argv)
 
 	if ( BIsSDLSession() )
 	{
-		if ( !SDL_Vulkan_CreateSurface( g_SDLWindow, instance, &surface ) )
+		// if ( !SDL_Vulkan_CreateSurface( g_SDLWindow, instance, &surface ) )
+		// {
+		// 	fprintf(stderr, "SDL_Vulkan_CreateSurface failed: %s", SDL_GetError() );
+		// 	return 1;
+		// }
+
+		for(SDL_Window *window : g_SDLWindows)
 		{
-			fprintf(stderr, "SDL_Vulkan_CreateSurface failed: %s", SDL_GetError() );
-			return 1;
+			surfaces.push_back(VK_NULL_HANDLE);
+			if( !SDL_Vulkan_CreateSurface( window, instance, &surfaces[surfaces.size() - 1] ))
+			{
+				fprintf(stderr, "SDL_Vulkan_CreateSurface failed: %s", SDL_GetError() );
+				return 1;
+			}
 		}
 	}
 
 	g_ForcedNV12ColorSpace = parse_colorspace_string( getenv( "GAMESCOPE_NV12_COLORSPACE" ) );
 
-	if ( !vulkan_init(instance, surface) )
+	if ( !vulkan_init(instance, surfaces) )
 	{
 		fprintf( stderr, "Failed to initialize Vulkan\n" );
 		return 1;
@@ -794,10 +805,13 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	if ( !vulkan_make_output(surface) )
+	for(VkSurfaceKHR surface : surfaces)
 	{
-		fprintf( stderr, "vulkan_make_output failed\n" );
-		return 1;
+		if ( !vulkan_make_output(surface) )
+		{
+			fprintf( stderr, "vulkan_make_output failed\n" );
+			return 1;
+		}
 	}
 
 	// Prevent our clients from connecting to the parent compositor
@@ -846,6 +860,8 @@ int main(int argc, char **argv)
 		vrsession_ime_init();
 	}
 #endif
+
+	fprintf(stdout, "hello %d %d\n", g_nOutputHeight, g_nOutputWidth);
 
 	gamescope_xwayland_server_t *base_server = wlserver_get_xwayland_server(0);
 
