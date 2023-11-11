@@ -92,7 +92,7 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(
 }
 
 
-VulkanOutput_t g_output;
+std::vector<VulkanOutput_t> g_outputs;
 
 uint32_t g_uCompositeDebug = 0u;
 
@@ -2560,16 +2560,27 @@ bool vulkan_init_formats()
 	return true;
 }
 
-bool acquire_next_image( void )
+bool acquire_next_image( VulkanOutput_t *pOutput )
 {
-	VkResult res = g_device.vk.AcquireNextImageKHR( g_device.device(), g_output.swapChain, UINT64_MAX, VK_NULL_HANDLE, g_output.acquireFence, &g_output.nOutImage );
+	VkResult res = g_device.vk.AcquireNextImageKHR( g_device.device(), pOutput->swapChain, UINT64_MAX, VK_NULL_HANDLE, pOutput->acquireFence, &pOutput->nOutImage );
 	if ( res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR )
 		return false;
-	if ( g_device.vk.WaitForFences( g_device.device(), 1, &g_output.acquireFence, false, UINT64_MAX ) != VK_SUCCESS )
+	if ( g_device.vk.WaitForFences( g_device.device(), 1, &pOutput->acquireFence, false, UINT64_MAX ) != VK_SUCCESS )
 		return false;
-	return g_device.vk.ResetFences( g_device.device(), 1, &g_output.acquireFence ) == VK_SUCCESS;
+	return g_device.vk.ResetFences( g_device.device(), 1, &pOutput->acquireFence ) == VK_SUCCESS;
 }
 
+bool acquire_next_image( void )
+{
+	for ( VulkanOutput_t output : g_outputs)
+	{
+		if ( !acquire_next_image(&output) )
+			return false;
+	}
+	return true;
+}
+
+//FIXME: find a way to do present wait on multiple swapchains
 
 static std::atomic<uint64_t> g_currentPresentWaitId = {0u};
 static std::mutex present_wait_lock;
@@ -2577,6 +2588,7 @@ static std::mutex present_wait_lock;
 static void present_wait_thread_func( void )
 {
 	uint64_t present_wait_id = 0;
+	VulkanOutput_t *pOutput = &g_outputs[0];
 
 	while (true)
 	{
@@ -2590,7 +2602,7 @@ static void present_wait_thread_func( void )
 
 			if (present_wait_id != 0)
 			{
-				g_device.vk.WaitForPresentKHR( g_device.device(), g_output.swapChain, present_wait_id, 1'000'000'000lu );
+				g_device.vk.WaitForPresentKHR( g_device.device(), pOutput->swapChain, present_wait_id, 1'000'000'000lu );
 				vblank_mark_possible_vblank( get_time_in_nanos() );
 			}
 		}
@@ -2599,7 +2611,7 @@ static void present_wait_thread_func( void )
 
 void vulkan_update_swapchain_hdr_metadata( VulkanOutput_t *pOutput )
 {
-	if (!g_output.swapchainHDRMetadata)
+	if (!pOutput->swapchainHDRMetadata)
 		return;
 
 	if ( !g_device.vk.SetHdrMetadataEXT )
@@ -2613,7 +2625,7 @@ void vulkan_update_swapchain_hdr_metadata( VulkanOutput_t *pOutput )
 		return;
 	}
 
-	hdr_metadata_infoframe &infoframe = g_output.swapchainHDRMetadata->metadata.hdmi_metadata_type1;
+	hdr_metadata_infoframe &infoframe = pOutput->swapchainHDRMetadata->metadata.hdmi_metadata_type1;
 	VkHdrMetadataEXT metadata =
 	{
 		.sType = VK_STRUCTURE_TYPE_HDR_METADATA_EXT,
@@ -2626,49 +2638,65 @@ void vulkan_update_swapchain_hdr_metadata( VulkanOutput_t *pOutput )
 		.maxContentLightLevel = nits_from_u16(infoframe.max_cll),
 		.maxFrameAverageLightLevel = nits_from_u16(infoframe.max_fall),
 	};
-	g_device.vk.SetHdrMetadataEXT(g_device.device(), 1, &g_output.swapChain, &metadata);
+	g_device.vk.SetHdrMetadataEXT(g_device.device(), 1, &pOutput->swapChain, &metadata);
 }
 
 void vulkan_present_to_window( void )
 {
 	static uint64_t s_lastPresentId = 0;
 
-	uint64_t presentId = ++s_lastPresentId;
-	
 	auto feedback = steamcompmgr_get_base_layer_swapchain_feedback();
-	if (feedback && feedback->hdr_metadata_blob)
+	for(VulkanOutput_t output : g_outputs)
 	{
-		if ( feedback->hdr_metadata_blob != g_output.swapchainHDRMetadata )
+		VulkanOutput_t *pOutput = &output;
+		if (feedback && feedback->hdr_metadata_blob)
 		{
-			g_output.swapchainHDRMetadata = feedback->hdr_metadata_blob;
-			vulkan_update_swapchain_hdr_metadata( &g_output );
+			if ( feedback->hdr_metadata_blob != pOutput->swapchainHDRMetadata )
+			{
+				pOutput->swapchainHDRMetadata = feedback->hdr_metadata_blob;
+				vulkan_update_swapchain_hdr_metadata( pOutput );
+			}
+		}
+		else if ( pOutput->swapchainHDRMetadata != nullptr )
+		{
+			// Only way to clear hdr metadata for a swapchain in Vulkan
+			// is to recreate the swapchain.
+			pOutput->swapchainHDRMetadata = nullptr;
+			vulkan_remake_swapchain(pOutput);
 		}
 	}
-	else if ( g_output.swapchainHDRMetadata != nullptr )
-	{
-		// Only way to clear hdr metadata for a swapchain in Vulkan
-		// is to recreate the swapchain.
-		g_output.swapchainHDRMetadata = nullptr;
-		vulkan_remake_swapchain();
-	}
 
+
+	std::vector<uint32_t> indices;
+	std::vector<VkSwapchainKHR> swapchains;
+	std::vector<uint64_t> presentIds;
+
+	//get present id for first output
+	uint64_t present_id = s_lastPresentId + 1;
+
+	for(VulkanOutput_t output : g_outputs)
+	{
+		indices.push_back(output.nOutImage);
+		swapchains.push_back(output.swapChain);
+		presentIds.push_back(++s_lastPresentId);
+	}
 
 	VkPresentIdKHR presentIdInfo = {
 		.sType = VK_STRUCTURE_TYPE_PRESENT_ID_KHR,
-		.swapchainCount = 1,
-		.pPresentIds = &presentId,
+		.swapchainCount = g_outputs.size(),
+		.pPresentIds = presentIds.data(),
 	};
 
 	VkPresentInfoKHR presentInfo = {
 		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 		.pNext = &presentIdInfo,
-		.swapchainCount = 1,
-		.pSwapchains = &g_output.swapChain,
-		.pImageIndices = &g_output.nOutImage,
+		.swapchainCount = g_outputs.size(),
+		.pSwapchains = swapchains.data(),
+		.pImageIndices = indices.data(),
 	};
 
 	if ( g_device.vk.QueuePresentKHR( g_device.queue(), &presentInfo ) == VK_SUCCESS )
-		g_currentPresentWaitId = presentId;
+		g_currentPresentWaitId = present_id;
 	else
 		vulkan_remake_swapchain();
 
@@ -2743,7 +2771,7 @@ std::shared_ptr<CVulkanTexture> vulkan_create_debug_white_texture()
 void vulkan_present_to_openvr( void )
 {
 	//static auto texture = vulkan_create_debug_white_texture();
-	auto texture = vulkan_get_last_output_image( false, false );
+	auto texture = vulkan_get_last_output_image( &g_outputs[0], false, false );
 
 	vr::VRVulkanTextureData_t data =
 	{
@@ -2762,9 +2790,9 @@ void vulkan_present_to_openvr( void )
 }
 #endif
 
-bool vulkan_supports_hdr10()
+bool vulkan_supports_hdr10( VulkanOutput_t *pOutput )
 {
-	for ( auto& format : g_output.surfaceFormats )
+	for ( auto& format : pOutput->surfaceFormats )
 	{
 		if ( format.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT )
 			return true;
@@ -2881,12 +2909,11 @@ bool vulkan_make_swapchain( VulkanOutput_t *pOutput )
 	return true;
 }
 
-bool vulkan_remake_swapchain( void )
+bool vulkan_remake_swapchain( VulkanOutput_t *pOutput )
 {
 	std::unique_lock lock(present_wait_lock);
 	g_currentPresentWaitId = 0;
 
-	VulkanOutput_t *pOutput = &g_output;
 	g_device.waitIdle();
 	g_device.vk.QueueWaitIdle( g_device.queue() );
 
@@ -2980,9 +3007,8 @@ static bool vulkan_make_output_images( VulkanOutput_t *pOutput )
 	return true;
 }
 
-bool vulkan_remake_output_images()
+bool vulkan_remake_output_images( VulkanOutput_t *pOutput )
 {
-	VulkanOutput_t *pOutput = &g_output;
 	g_device.waitIdle();
 
 	pOutput->nOutImage = 0;
@@ -2996,100 +3022,115 @@ bool vulkan_remake_output_images()
 	return bRet;
 }
 
-bool vulkan_make_output( VkSurfaceKHR surface )
+bool vulkan_remake_output_images(void)
 {
-	VulkanOutput_t *pOutput = &g_output;
-
-	VkResult result;
-	
-	if ( BIsVRSession() || BIsHeadless() )
+	for ( VulkanOutput_t output : g_outputs)
 	{
-		pOutput->outputFormat = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
-		vulkan_make_output_images( pOutput );
+		if ( !vulkan_remake_output_images(&output) )
+			return false;
 	}
-	else if ( BIsSDLSession() )
-	{
-		assert(surface);
-		pOutput->surface = surface;
+	return true;
 
-		result = g_device.vk.GetPhysicalDeviceSurfaceCapabilitiesKHR( g_device.physDev(), pOutput->surface, &pOutput->surfaceCaps );
-		if ( result != VK_SUCCESS )
+}
+
+bool vulkan_make_output( std::vector<VkSurfaceKHR> surfaces )
+{
+	for (int i = 0; i < surfaces.size(); i++)
+	{
+		g_outputs.push_back( {} );
+		VulkanOutput_t *pOutput = &g_outputs.back();
+
+		VkResult result;
+
+		if ( BIsVRSession() || BIsHeadless() )
 		{
-			vk_errorf( result, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed" );
-			return false;
+			pOutput->outputFormat = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+			vulkan_make_output_images( pOutput );
 		}
-		
-		uint32_t formatCount = 0;
-		result = g_device.vk.GetPhysicalDeviceSurfaceFormatsKHR( g_device.physDev(), pOutput->surface, &formatCount, nullptr );
-		if ( result != VK_SUCCESS )
+		else if ( BIsSDLSession() )
 		{
-			vk_errorf( result, "vkGetPhysicalDeviceSurfaceFormatsKHR failed" );
-			return false;
-		}
-		
-		if ( formatCount != 0 ) {
-			pOutput->surfaceFormats.resize( formatCount );
-			g_device.vk.GetPhysicalDeviceSurfaceFormatsKHR( g_device.physDev(), pOutput->surface, &formatCount, pOutput->surfaceFormats.data() );
+			assert(surfaces[i]);
+			pOutput->surface = surfaces[i];
+
+			result = g_device.vk.GetPhysicalDeviceSurfaceCapabilitiesKHR( g_device.physDev(), pOutput->surface, &pOutput->surfaceCaps );
+			if ( result != VK_SUCCESS )
+			{
+				vk_errorf( result, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed" );
+				return false;
+			}
+
+			uint32_t formatCount = 0;
+			result = g_device.vk.GetPhysicalDeviceSurfaceFormatsKHR( g_device.physDev(), pOutput->surface, &formatCount, nullptr );
 			if ( result != VK_SUCCESS )
 			{
 				vk_errorf( result, "vkGetPhysicalDeviceSurfaceFormatsKHR failed" );
 				return false;
 			}
-		}
-		
-		uint32_t presentModeCount = false;
-		result = g_device.vk.GetPhysicalDeviceSurfacePresentModesKHR(g_device.physDev(), pOutput->surface, &presentModeCount, nullptr );
-		if ( result != VK_SUCCESS )
-		{
-			vk_errorf( result, "vkGetPhysicalDeviceSurfacePresentModesKHR failed" );
-			return false;
-		}
-		
-		if ( presentModeCount != 0 ) {
-			pOutput->presentModes.resize(presentModeCount);
-			result = g_device.vk.GetPhysicalDeviceSurfacePresentModesKHR( g_device.physDev(), pOutput->surface, &presentModeCount, pOutput->presentModes.data() );
+
+			if ( formatCount != 0 ) {
+				pOutput->surfaceFormats.resize( formatCount );
+				g_device.vk.GetPhysicalDeviceSurfaceFormatsKHR( g_device.physDev(), pOutput->surface, &formatCount, pOutput->surfaceFormats.data() );
+				if ( result != VK_SUCCESS )
+				{
+					vk_errorf( result, "vkGetPhysicalDeviceSurfaceFormatsKHR failed" );
+					return false;
+				}
+			}
+
+			uint32_t presentModeCount = false;
+			result = g_device.vk.GetPhysicalDeviceSurfacePresentModesKHR(g_device.physDev(), pOutput->surface, &presentModeCount, nullptr );
 			if ( result != VK_SUCCESS )
 			{
 				vk_errorf( result, "vkGetPhysicalDeviceSurfacePresentModesKHR failed" );
 				return false;
 			}
-		}
-		
-		if ( !vulkan_make_swapchain( pOutput ) )
-			return false;
 
-		while ( !acquire_next_image() )
-			vulkan_remake_swapchain();
-	}
-	else
-	{
-		pOutput->outputFormat = DRMFormatToVulkan( g_nDRMFormat, false );
-		pOutput->outputFormatOverlay = DRMFormatToVulkan( g_nDRMFormatOverlay, false );
-		
-		if ( pOutput->outputFormat == VK_FORMAT_UNDEFINED )
+			if ( presentModeCount != 0 ) {
+				pOutput->presentModes.resize(presentModeCount);
+				result = g_device.vk.GetPhysicalDeviceSurfacePresentModesKHR( g_device.physDev(), pOutput->surface, &presentModeCount, pOutput->presentModes.data() );
+				if ( result != VK_SUCCESS )
+				{
+					vk_errorf( result, "vkGetPhysicalDeviceSurfacePresentModesKHR failed" );
+					return false;
+				}
+			}
+
+			if ( !vulkan_make_swapchain( pOutput ) )
+				return false;
+
+			while ( !acquire_next_image(pOutput) )
+				vulkan_remake_swapchain(pOutput);
+		}
+		else
 		{
-			vk_log.errorf( "failed to find Vulkan format suitable for KMS" );
-			return false;
+			pOutput->outputFormat = DRMFormatToVulkan( g_nDRMFormat, false );
+			pOutput->outputFormatOverlay = DRMFormatToVulkan( g_nDRMFormatOverlay, false );
+
+			if ( pOutput->outputFormat == VK_FORMAT_UNDEFINED )
+			{
+				vk_log.errorf( "failed to find Vulkan format suitable for KMS" );
+				return false;
+			}
+
+			if ( pOutput->outputFormatOverlay == VK_FORMAT_UNDEFINED )
+			{
+				vk_log.errorf( "failed to find Vulkan format suitable for KMS partial overlays" );
+				return false;
+			}
+
+			if ( !vulkan_make_output_images( pOutput ) )
+				return false;
 		}
 
-		if ( pOutput->outputFormatOverlay == VK_FORMAT_UNDEFINED )
-		{
-			vk_log.errorf( "failed to find Vulkan format suitable for KMS partial overlays" );
-			return false;
-		}
-
-		if ( !vulkan_make_output_images( pOutput ) )
-			return false;
+		return true;
 	}
-
-	return true;
 }
 
-static void update_tmp_images( uint32_t width, uint32_t height )
+static void update_tmp_images( VulkanOutput_t* pOutput, uint32_t width, uint32_t height )
 {
-	if ( g_output.tmpOutput != nullptr
-			&& width == g_output.tmpOutput->width()
-			&& height == g_output.tmpOutput->height() )
+	if ( pOutput->tmpOutput != nullptr
+			&& width == pOutput->tmpOutput->width()
+			&& height == pOutput->tmpOutput->height() )
 	{
 		return;
 	}
@@ -3098,8 +3139,8 @@ static void update_tmp_images( uint32_t width, uint32_t height )
 	createFlags.bSampled = true;
 	createFlags.bStorage = true;
 
-	g_output.tmpOutput = std::make_shared<CVulkanTexture>();
-	bool bSuccess = g_output.tmpOutput->BInit( width, height, 1u, DRM_FORMAT_ARGB8888, createFlags, nullptr );
+	pOutput->tmpOutput = std::make_shared<CVulkanTexture>();
+	bool bSuccess = pOutput->tmpOutput->BInit( width, height, 1u, DRM_FORMAT_ARGB8888, createFlags, nullptr );
 
 	if ( !bSuccess )
 	{
@@ -3123,8 +3164,11 @@ static bool init_nis_data()
 	uint32_t width = kFilterSize / 4;
 	uint32_t height = kPhaseCount;
 
-	g_output.nisScalerImage = vulkan_create_texture_from_bits( width, height, width, height, nisFormat, {}, coefScaleData );
-	g_output.nisUsmImage = vulkan_create_texture_from_bits( width, height, width, height, nisFormat, {}, coefUsmData );
+	for(VulkanOutput_t output : g_outputs)
+	{
+		output.nisScalerImage = vulkan_create_texture_from_bits( width, height, width, height, nisFormat, {}, coefScaleData );
+	    output.nisUsmImage = vulkan_create_texture_from_bits( width, height, width, height, nisFormat, {}, coefUsmData );
+	}
 
 	return true;
 }
@@ -3244,9 +3288,9 @@ void vulkan_garbage_collect( void )
 	g_device.garbageCollect();
 }
 
-std::shared_ptr<CVulkanTexture> vulkan_acquire_screenshot_texture(uint32_t width, uint32_t height, bool exportable, uint32_t drmFormat, EStreamColorspace colorspace)
+std::shared_ptr<CVulkanTexture> vulkan_acquire_screenshot_texture(uint32_t output_index, uint32_t width, uint32_t height, bool exportable, uint32_t drmFormat, EStreamColorspace colorspace)
 {
-	for (auto& pScreenshotImage : g_output.pScreenshotImages)
+	for (auto& pScreenshotImage : g_outputs[output_index].pScreenshotImages)
 	{
 		if (pScreenshotImage == nullptr)
 		{
@@ -3781,19 +3825,19 @@ bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTex
 	return true;
 }
 
-std::shared_ptr<CVulkanTexture> vulkan_get_last_output_image( bool partial, bool defer )
+std::shared_ptr<CVulkanTexture> vulkan_get_last_output_image( VulkanOutput_t *pOutput, bool partial, bool defer )
 {
 	// Get previous image ( +2 )
 	// 1 2 3
 	//   |
 	// |
-	uint32_t nRegularImage = ( g_output.nOutImage + 2 ) % 3;
+	uint32_t nRegularImage = ( pOutput->nOutImage + 2 ) % 3;
 
 	// Get previous previous image ( +1 )
 	// 1 2 3
 	//   |
 	//     |
-	uint32_t nDeferredImage = ( g_output.nOutImage + 1 ) % 3;
+	uint32_t nDeferredImage = ( pOutput->nOutImage + 1 ) % 3;
 
 	uint32_t nOutImage = defer ? nDeferredImage : nRegularImage;
 
@@ -3801,11 +3845,11 @@ std::shared_ptr<CVulkanTexture> vulkan_get_last_output_image( bool partial, bool
 	{
 
 		//vk_log.infof( "Partial overlay frame: %d", nDeferredImage );
-		return g_output.outputImagesPartialOverlay[ nOutImage ];
+		return pOutput->outputImagesPartialOverlay[ nOutImage ];
 	}
 
 
-	return g_output.outputImages[ nOutImage ];
+	return pOutput->outputImages[ nOutImage ];
 }
 
 bool vulkan_primary_dev_id(dev_t *id)

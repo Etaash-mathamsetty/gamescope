@@ -2834,7 +2834,7 @@ paint_all(bool async)
 			? DRM_FORMAT_NV12
 			: DRM_FORMAT_XRGB8888;
 
-		std::shared_ptr<CVulkanTexture> pScreenshotTexture = vulkan_acquire_screenshot_texture(g_nOutputWidth, g_nOutputHeight, false, drmCaptureFormat);
+		std::shared_ptr<CVulkanTexture> pScreenshotTexture = vulkan_acquire_screenshot_texture( 0, g_nOutputWidth, g_nOutputHeight, false, drmCaptureFormat);
 
 		if ( pScreenshotTexture )
 		{

@@ -360,18 +360,20 @@ namespace CompositeDebugFlag
 	static constexpr uint32_t Tonemap_Reinhard = 1u << 7;
 };
 
+struct VulkanOutput_t;
+
 VkInstance vulkan_create_instance(void);
 bool vulkan_init(VkInstance instance, std::vector<VkSurfaceKHR> surfaces);
 bool vulkan_init_formats(void);
-bool vulkan_make_output(VkSurfaceKHR surface);
+bool vulkan_make_output(std::vector<VkSurfaceKHR> surfaces);
 
 std::shared_ptr<CVulkanTexture> vulkan_create_texture_from_dmabuf( struct wlr_dmabuf_attributes *pDMA );
 std::shared_ptr<CVulkanTexture> vulkan_create_texture_from_bits( uint32_t width, uint32_t height, uint32_t contentWidth, uint32_t contentHeight, uint32_t drmFormat, CVulkanTexture::createFlags texCreateFlags, void *bits );
 std::shared_ptr<CVulkanTexture> vulkan_create_texture_from_wlr_buffer( struct wlr_buffer *buf );
 
 bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTexture> pScreenshotTexture, bool partial, bool deferred );
-std::shared_ptr<CVulkanTexture> vulkan_get_last_output_image( bool partial, bool defer );
-std::shared_ptr<CVulkanTexture> vulkan_acquire_screenshot_texture(uint32_t width, uint32_t height, bool exportable, uint32_t drmFormat, EStreamColorspace colorspace = k_EStreamColorspace_Unknown);
+std::shared_ptr<CVulkanTexture> vulkan_get_last_output_image( VulkanOutput_t *pOutput, bool partial, bool defer );
+std::shared_ptr<CVulkanTexture> vulkan_acquire_screenshot_texture( uint32_t output_index, uint32_t width, uint32_t height, bool exportable, uint32_t drmFormat, EStreamColorspace colorspace = k_EStreamColorspace_Unknown);
 
 void vulkan_present_to_window( void );
 #if HAVE_OPENVR
@@ -379,9 +381,10 @@ void vulkan_present_to_openvr( void );
 #endif
 
 void vulkan_garbage_collect( void );
-bool vulkan_remake_swapchain( void );
-bool vulkan_remake_output_images( void );
-bool acquire_next_image( void );
+bool vulkan_remake_swapchain();
+bool vulkan_remake_swapchain(VulkanOutput_t *pOutput);
+bool vulkan_remake_output_images();
+bool acquire_next_image();
 
 bool vulkan_primary_dev_id(dev_t *id);
 bool vulkan_supports_modifiers(void);
@@ -512,7 +515,7 @@ enum ShaderType {
 	SHADER_TYPE_COUNT
 };
 
-extern VulkanOutput_t g_output;
+extern std::vector<VulkanOutput_t> g_outputs;
 
 struct SamplerState
 {

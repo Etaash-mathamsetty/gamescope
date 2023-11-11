@@ -805,14 +805,12 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	for(VkSurfaceKHR surface : surfaces)
+	if ( !vulkan_make_output(surfaces) )
 	{
-		if ( !vulkan_make_output(surface) )
-		{
-			fprintf( stderr, "vulkan_make_output failed\n" );
-			return 1;
-		}
+		fprintf( stderr, "vulkan_make_output failed\n" );
+		return 1;
 	}
+
 
 	// Prevent our clients from connecting to the parent compositor
 	unsetenv("WAYLAND_DISPLAY");

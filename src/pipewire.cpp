@@ -473,7 +473,7 @@ static void stream_handle_add_buffer(void *user_data, struct pw_buffer *pw_buffe
 
 	uint32_t drmFormat = spa_format_to_drm(state->video_info.format);
 
-	buffer->texture = vulkan_acquire_screenshot_texture(s_nCaptureWidth, s_nCaptureHeight, is_dmabuf, drmFormat, colorspace);
+	buffer->texture = vulkan_acquire_screenshot_texture(0, s_nCaptureWidth, s_nCaptureHeight, is_dmabuf, drmFormat, colorspace);
 	assert(buffer->texture != nullptr);
 
 	if (is_dmabuf) {
