@@ -2588,11 +2588,6 @@ static std::mutex present_wait_lock;
 static void present_wait_thread_func( void )
 {
 	uint64_t present_wait_id = 0;
-	while(g_outputs.size() <= 0);
-	while(g_outputs[0].swapChain == VK_NULL_HANDLE);
-	VulkanOutput_t *pOutput = &g_outputs[0];
-
-	printf("hello %p\n", pOutput->swapChain);
 
 	while (true)
 	{
@@ -2606,7 +2601,10 @@ static void present_wait_thread_func( void )
 
 			if (present_wait_id != 0)
 			{
-				g_device.vk.WaitForPresentKHR( g_device.device(), pOutput->swapChain, present_wait_id, 1'000'000'000lu );
+				for(size_t i = 0; i < g_outputs.size(); i++)
+				{
+					g_device.vk.WaitForPresentKHR( g_device.device(), g_outputs[i].swapChain, present_wait_id + i, 1'000'000'000lu );
+				}
 				vblank_mark_possible_vblank( get_time_in_nanos() );
 			}
 		}
