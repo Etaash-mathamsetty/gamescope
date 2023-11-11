@@ -811,6 +811,8 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
+	printf("hmm %ld\n", g_outputs.size());
+
 
 	// Prevent our clients from connecting to the parent compositor
 	unsetenv("WAYLAND_DISPLAY");

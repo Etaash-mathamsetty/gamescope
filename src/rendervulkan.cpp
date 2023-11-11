@@ -2572,7 +2572,7 @@ bool acquire_next_image( VulkanOutput_t *pOutput )
 
 bool acquire_next_image( void )
 {
-	for ( VulkanOutput_t output : g_outputs)
+	for ( VulkanOutput_t& output : g_outputs)
 	{
 		if ( !acquire_next_image(&output) )
 			return false;
@@ -2588,7 +2588,11 @@ static std::mutex present_wait_lock;
 static void present_wait_thread_func( void )
 {
 	uint64_t present_wait_id = 0;
+	while(g_outputs.size() <= 0);
+	while(g_outputs[0].swapChain == VK_NULL_HANDLE);
 	VulkanOutput_t *pOutput = &g_outputs[0];
+
+	printf("hello %p\n", pOutput->swapChain);
 
 	while (true)
 	{
@@ -2646,7 +2650,7 @@ void vulkan_present_to_window( void )
 	static uint64_t s_lastPresentId = 0;
 
 	auto feedback = steamcompmgr_get_base_layer_swapchain_feedback();
-	for(VulkanOutput_t output : g_outputs)
+	for(VulkanOutput_t& output : g_outputs)
 	{
 		VulkanOutput_t *pOutput = &output;
 		if (feedback && feedback->hdr_metadata_blob)
@@ -2674,7 +2678,7 @@ void vulkan_present_to_window( void )
 	//get present id for first output
 	uint64_t present_id = s_lastPresentId + 1;
 
-	for(VulkanOutput_t output : g_outputs)
+	for(VulkanOutput_t& output : g_outputs)
 	{
 		indices.push_back(output.nOutImage);
 		swapchains.push_back(output.swapChain);
@@ -2803,7 +2807,7 @@ bool vulkan_supports_hdr10( VulkanOutput_t *pOutput )
 
 bool vulkan_supports_hdr10( void )
 {
-	for ( VulkanOutput_t output : g_outputs)
+	for ( VulkanOutput_t& output : g_outputs)
 	{
 		if ( !vulkan_supports_hdr10(&output) )
 			return false;
@@ -2943,7 +2947,7 @@ bool vulkan_remake_swapchain( VulkanOutput_t *pOutput )
 
 bool vulkan_remake_swapchain(void)
 {
-	for ( VulkanOutput_t output : g_outputs)
+	for ( VulkanOutput_t& output : g_outputs)
 	{
 		if ( !vulkan_remake_swapchain(&output) )
 			return false;
@@ -3045,7 +3049,7 @@ bool vulkan_remake_output_images( VulkanOutput_t *pOutput )
 
 bool vulkan_remake_output_images(void)
 {
-	for ( VulkanOutput_t output : g_outputs)
+	for ( VulkanOutput_t& output : g_outputs)
 	{
 		if ( !vulkan_remake_output_images(&output) )
 			return false;
@@ -3056,12 +3060,11 @@ bool vulkan_remake_output_images(void)
 
 bool vulkan_make_output( std::vector<VkSurfaceKHR> surfaces )
 {
+	VkResult result;
 	for (size_t i = 0; i < surfaces.size(); i++)
 	{
 		g_outputs.push_back( {} );
 		VulkanOutput_t *pOutput = &g_outputs[i];
-
-		VkResult result;
 
 		if ( BIsVRSession() || BIsHeadless() )
 		{
@@ -3121,6 +3124,8 @@ bool vulkan_make_output( std::vector<VkSurfaceKHR> surfaces )
 
 			while ( !acquire_next_image(pOutput) )
 				vulkan_remake_swapchain(pOutput);
+
+			printf("swapchain %p\n", pOutput->swapChain);
 		}
 		else
 		{
@@ -3186,7 +3191,7 @@ static bool init_nis_data()
 	uint32_t width = kFilterSize / 4;
 	uint32_t height = kPhaseCount;
 
-	for(VulkanOutput_t output : g_outputs)
+	for(VulkanOutput_t& output : g_outputs)
 	{
 		output.nisScalerImage = vulkan_create_texture_from_bits( width, height, width, height, nisFormat, {}, coefScaleData );
 	    output.nisUsmImage = vulkan_create_texture_from_bits( width, height, width, height, nisFormat, {}, coefUsmData );
@@ -3644,7 +3649,7 @@ bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTex
 
 	auto cmdBuffer = g_device.commandBuffer();
 
-	for(VulkanOutput_t output : g_outputs)
+	for(VulkanOutput_t& output : g_outputs)
 	{
 	auto compositeImage = partial ? output.outputImagesPartialOverlay[ output.nOutImage ] : output.outputImages[ output.nOutImage ];
 
@@ -3845,7 +3850,7 @@ bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTex
 
 	if ( !BIsSDLSession() )
 	{
-		for(VulkanOutput_t output : g_outputs)
+		for(VulkanOutput_t& output : g_outputs)
 			output.nOutImage = ( output.nOutImage + 1 ) % 3;
 	}
 
