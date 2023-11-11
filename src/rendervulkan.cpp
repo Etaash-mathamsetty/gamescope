@@ -3061,6 +3061,7 @@ bool vulkan_remake_output_images(void)
 bool vulkan_make_output( std::vector<VkSurfaceKHR> surfaces )
 {
 	VkResult result;
+	printf("surfaces.size() %ld\n", surfaces.size());
 	for (size_t i = 0; i < surfaces.size(); i++)
 	{
 		g_outputs.push_back( {} );
@@ -3147,10 +3148,8 @@ bool vulkan_make_output( std::vector<VkSurfaceKHR> surfaces )
 			if ( !vulkan_make_output_images( pOutput ) )
 				return false;
 		}
-
-		return true;
 	}
-	return false;
+	return true;
 }
 
 static void update_tmp_images( VulkanOutput_t* pOutput, uint32_t width, uint32_t height )
