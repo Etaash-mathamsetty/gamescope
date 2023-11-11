@@ -2801,6 +2801,17 @@ bool vulkan_supports_hdr10( VulkanOutput_t *pOutput )
 	return false;
 }
 
+bool vulkan_supports_hdr10( void )
+{
+	for ( VulkanOutput_t output : g_outputs)
+	{
+		if ( !vulkan_supports_hdr10(&output) )
+			return false;
+	}
+
+	return true;
+}
+
 extern bool g_bOutputHDREnabled;
 
 bool vulkan_make_swapchain( VulkanOutput_t *pOutput )
@@ -2928,6 +2939,16 @@ bool vulkan_remake_swapchain( VulkanOutput_t *pOutput )
 	bool bRet = vulkan_make_swapchain( pOutput );
 	assert( bRet ); // Something has gone horribly wrong!
 	return bRet;
+}
+
+bool vulkan_remake_swapchain(void)
+{
+	for ( VulkanOutput_t output : g_outputs)
+	{
+		if ( !vulkan_remake_swapchain(&output) )
+			return false;
+	}
+	return true;
 }
 
 static bool vulkan_make_output_images( VulkanOutput_t *pOutput )
@@ -3620,9 +3641,11 @@ bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTex
 		g_reshadeManager.clear();
 	}
 
-	auto compositeImage = partial ? g_output.outputImagesPartialOverlay[ g_output.nOutImage ] : g_output.outputImages[ g_output.nOutImage ];
-
 	auto cmdBuffer = g_device.commandBuffer();
+
+	for(VulkanOutput_t output : g_outputs)
+	{
+	auto compositeImage = partial ? output.outputImagesPartialOverlay[ output.nOutImage ] : output.outputImages[ output.nOutImage ];
 
 	for (uint32_t i = 0; i < EOTF_Count; i++)
 		cmdBuffer->bindColorMgmtLuts(i, frameInfo->shaperLut[i], frameInfo->lut3D[i]);
@@ -3635,10 +3658,10 @@ bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTex
 		uint32_t tempX = frameInfo->layers[0].integerWidth();
 		uint32_t tempY = frameInfo->layers[0].integerHeight();
 
-		update_tmp_images(tempX, tempY);
+		update_tmp_images(&output, tempX, tempY);
 
 		cmdBuffer->bindPipeline(g_device.pipeline(SHADER_TYPE_EASU));
-		cmdBuffer->bindTarget(g_output.tmpOutput);
+		cmdBuffer->bindTarget(output.tmpOutput);
 		cmdBuffer->bindTexture(0, frameInfo->layers[0].tex);
 		cmdBuffer->setTextureSrgb(0, true);
 		cmdBuffer->setSamplerUnnormalized(0, false);
@@ -3651,7 +3674,7 @@ bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTex
 
 		cmdBuffer->bindPipeline(g_device.pipeline(SHADER_TYPE_RCAS, frameInfo->layerCount, frameInfo->ycbcrMask() & ~1, 0u, frameInfo->colorspaceMask(), outputTF ));
 		bind_all_layers(cmdBuffer.get(), frameInfo);
-		cmdBuffer->bindTexture(0, g_output.tmpOutput);
+		cmdBuffer->bindTexture(0, output.tmpOutput);
 		cmdBuffer->setTextureSrgb(0, true);
 		cmdBuffer->setSamplerUnnormalized(0, false);
 		cmdBuffer->setSamplerNearest(0, false);
@@ -3668,20 +3691,20 @@ bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTex
 		uint32_t tempX = frameInfo->layers[0].integerWidth();
 		uint32_t tempY = frameInfo->layers[0].integerHeight();
 
-		update_tmp_images(tempX, tempY);
+		update_tmp_images(&output, tempX, tempY);
 
 		float nisSharpness = (20 - g_upscaleFilterSharpness) / 20.0f;
 
 		cmdBuffer->bindPipeline(g_device.pipeline(SHADER_TYPE_NIS));
-		cmdBuffer->bindTarget(g_output.tmpOutput);
+		cmdBuffer->bindTarget(output.tmpOutput);
 		cmdBuffer->bindTexture(0, frameInfo->layers[0].tex);
 		cmdBuffer->setTextureSrgb(0, true);
 		cmdBuffer->setSamplerUnnormalized(0, false);
 		cmdBuffer->setSamplerNearest(0, false);
-		cmdBuffer->bindTexture(VKR_NIS_COEF_SCALER_SLOT, g_output.nisScalerImage);
+		cmdBuffer->bindTexture(VKR_NIS_COEF_SCALER_SLOT, output.nisScalerImage);
 		cmdBuffer->setSamplerUnnormalized(VKR_NIS_COEF_SCALER_SLOT, false);
 		cmdBuffer->setSamplerNearest(VKR_NIS_COEF_SCALER_SLOT, false);
-		cmdBuffer->bindTexture(VKR_NIS_COEF_USM_SLOT, g_output.nisUsmImage);
+		cmdBuffer->bindTexture(VKR_NIS_COEF_USM_SLOT, output.nisUsmImage);
 		cmdBuffer->setSamplerUnnormalized(VKR_NIS_COEF_USM_SLOT, false);
 		cmdBuffer->setSamplerNearest(VKR_NIS_COEF_USM_SLOT, false);
 		cmdBuffer->uploadConstants<NisPushData_t>(inputX, inputY, tempX, tempY, nisSharpness);
@@ -3692,7 +3715,7 @@ bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTex
 		cmdBuffer->dispatch(div_roundup(tempX, pixelsPerGroupX), div_roundup(tempY, pixelsPerGroupY));
 
 		struct FrameInfo_t nisFrameInfo = *frameInfo;
-		nisFrameInfo.layers[0].tex = g_output.tmpOutput;
+		nisFrameInfo.layers[0].tex = output.tmpOutput;
 		nisFrameInfo.layers[0].scale.x = 1.0f;
 		nisFrameInfo.layers[0].scale.y = 1.0f;
 
@@ -3707,7 +3730,7 @@ bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTex
 	}
 	else if ( frameInfo->blurLayer0 )
 	{
-		update_tmp_images(currentOutputWidth, currentOutputHeight);
+		update_tmp_images(&output, currentOutputWidth, currentOutputHeight);
 
 		ShaderType type = SHADER_TYPE_BLUR_FIRST_PASS;
 
@@ -3717,7 +3740,7 @@ bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTex
 			blur_layer_count++;
 
 		cmdBuffer->bindPipeline(g_device.pipeline(type, blur_layer_count, frameInfo->ycbcrMask() & 0x3u, 0, frameInfo->colorspaceMask(), outputTF ));
-		cmdBuffer->bindTarget(g_output.tmpOutput);
+		cmdBuffer->bindTarget(output.tmpOutput);
 		for (uint32_t i = 0; i < blur_layer_count; i++)
 		{
 			cmdBuffer->bindTexture(i, frameInfo->layers[i].tex);
@@ -3737,7 +3760,7 @@ bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTex
 		cmdBuffer->bindPipeline(g_device.pipeline(type, frameInfo->layerCount, frameInfo->ycbcrMask(), blur_layer_count, frameInfo->colorspaceMask(), outputTF ));
 		bind_all_layers(cmdBuffer.get(), frameInfo);
 		cmdBuffer->bindTarget(compositeImage);
-		cmdBuffer->bindTexture(VKR_BLUR_EXTRA_SLOT, g_output.tmpOutput);
+		cmdBuffer->bindTexture(VKR_BLUR_EXTRA_SLOT, output.tmpOutput);
 		cmdBuffer->setTextureSrgb(VKR_BLUR_EXTRA_SLOT, !useSrgbView); // Inverted because it chooses whether to view as linear (sRGB view) or sRGB (raw view). It's horrible. I need to change it.
 		cmdBuffer->setSamplerUnnormalized(VKR_BLUR_EXTRA_SLOT, true);
 		cmdBuffer->setSamplerNearest(VKR_BLUR_EXTRA_SLOT, false);
@@ -3802,6 +3825,8 @@ bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTex
 		}
 	}
 
+	}
+
 	uint64_t sequence = g_device.submit(std::move(cmdBuffer));
 
 	if ( defer )
@@ -3819,7 +3844,8 @@ bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTex
 
 	if ( !BIsSDLSession() )
 	{
-		g_output.nOutImage = ( g_output.nOutImage + 1 ) % 3;
+		for(VulkanOutput_t output : g_outputs)
+			output.nOutImage = ( output.nOutImage + 1 ) % 3;
 	}
 
 	return true;

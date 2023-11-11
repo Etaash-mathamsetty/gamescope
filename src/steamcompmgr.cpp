@@ -2697,7 +2697,7 @@ paint_all(bool async)
 				baseLayer->opacity = 1.0;
 				baseLayer->zpos = g_zposBase;
 
-				baseLayer->tex = vulkan_get_last_output_image( false, false );
+				baseLayer->tex = vulkan_get_last_output_image( &g_outputs[0], false, false );
 				baseLayer->fbid = baseLayer->tex->fbid();
 				baseLayer->applyColorMgmt = false;
 
@@ -2723,7 +2723,7 @@ paint_all(bool async)
 					overlayLayer->opacity = 1.0;
 					overlayLayer->zpos = g_zposOverlay;
 
-					overlayLayer->tex = vulkan_get_last_output_image( true, bDefer );
+					overlayLayer->tex = vulkan_get_last_output_image( &g_outputs[0], true, bDefer );
 					overlayLayer->fbid = overlayLayer->tex->fbid();
 					overlayLayer->applyColorMgmt = g_ColorMgmt.pending.enabled;
 

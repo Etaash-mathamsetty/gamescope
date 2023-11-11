@@ -907,6 +907,7 @@ VkFormat DRMFormatToVulkan( uint32_t nDRMFormat, bool bSrgb );
 bool DRMFormatHasAlpha( uint32_t nDRMFormat );
 uint32_t DRMFormatGetBPP( uint32_t nDRMFormat );
 
-bool vulkan_supports_hdr10();
+bool vulkan_supports_hdr10( VulkanOutput_t *pOutput );
+bool vulkan_supports_hdr10( void );
 
 void vulkan_wait_idle();
