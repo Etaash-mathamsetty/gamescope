@@ -2683,14 +2683,14 @@ void vulkan_present_to_window( void )
 
 	VkPresentIdKHR presentIdInfo = {
 		.sType = VK_STRUCTURE_TYPE_PRESENT_ID_KHR,
-		.swapchainCount = g_outputs.size(),
+		.swapchainCount = (uint32_t)g_outputs.size(),
 		.pPresentIds = presentIds.data(),
 	};
 
 	VkPresentInfoKHR presentInfo = {
 		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 		.pNext = &presentIdInfo,
-		.swapchainCount = g_outputs.size(),
+		.swapchainCount = (uint32_t)g_outputs.size(),
 		.pSwapchains = swapchains.data(),
 		.pImageIndices = indices.data(),
 	};
@@ -3056,10 +3056,10 @@ bool vulkan_remake_output_images(void)
 
 bool vulkan_make_output( std::vector<VkSurfaceKHR> surfaces )
 {
-	for (int i = 0; i < surfaces.size(); i++)
+	for (size_t i = 0; i < surfaces.size(); i++)
 	{
 		g_outputs.push_back( {} );
-		VulkanOutput_t *pOutput = &g_outputs.back();
+		VulkanOutput_t *pOutput = &g_outputs[i];
 
 		VkResult result;
 
@@ -3145,6 +3145,7 @@ bool vulkan_make_output( std::vector<VkSurfaceKHR> surfaces )
 
 		return true;
 	}
+	return false;
 }
 
 static void update_tmp_images( VulkanOutput_t* pOutput, uint32_t width, uint32_t height )

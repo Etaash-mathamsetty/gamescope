@@ -7928,7 +7928,7 @@ void steamcompmgr_send_frame_done_to_focus_window()
 	{
 		wlserver_lock();
 		wlserver_send_frame_done( global_focus.focusWindow->xwayland().surface.main_surface , &now );
-		wlserver_unlock();		
+		wlserver_unlock();
 	}
 }
 
