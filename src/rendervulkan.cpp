@@ -2668,39 +2668,35 @@ void vulkan_present_to_window( void )
 		}
 	}
 
-
-	std::vector<uint32_t> indices;
-	std::vector<VkSwapchainKHR> swapchains;
-	std::vector<uint64_t> presentIds;
-
 	//get present id for first output
 	uint64_t present_id = s_lastPresentId + 1;
 
 	for(VulkanOutput_t& output : g_outputs)
 	{
-		indices.push_back(output.nOutImage);
-		swapchains.push_back(output.swapChain);
-		presentIds.push_back(++s_lastPresentId);
+		// indices.push_back(output.nOutImage);
+		// swapchains.push_back(output.swapChain);
+		// presentIds.push_back(++s_lastPresentId);
+		s_lastPresentId++;
+
+		VkPresentIdKHR presentIdInfo = {
+			.sType = VK_STRUCTURE_TYPE_PRESENT_ID_KHR,
+			.swapchainCount = 1,
+			.pPresentIds = &s_lastPresentId,
+		};
+
+		VkPresentInfoKHR presentInfo = {
+			.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+			.pNext = &presentIdInfo,
+			.swapchainCount = 1,
+			.pSwapchains = &output.swapChain,
+			.pImageIndices = &output.nOutImage,
+		};
+
+		if ( g_device.vk.QueuePresentKHR( g_device.queue(), &presentInfo ) != VK_SUCCESS )
+			vulkan_remake_swapchain(&output);
 	}
 
-	VkPresentIdKHR presentIdInfo = {
-		.sType = VK_STRUCTURE_TYPE_PRESENT_ID_KHR,
-		.swapchainCount = (uint32_t)g_outputs.size(),
-		.pPresentIds = presentIds.data(),
-	};
-
-	VkPresentInfoKHR presentInfo = {
-		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-		.pNext = &presentIdInfo,
-		.swapchainCount = (uint32_t)g_outputs.size(),
-		.pSwapchains = swapchains.data(),
-		.pImageIndices = indices.data(),
-	};
-
-	if ( g_device.vk.QueuePresentKHR( g_device.queue(), &presentInfo ) == VK_SUCCESS )
-		g_currentPresentWaitId = present_id;
-	else
-		vulkan_remake_swapchain();
+	g_currentPresentWaitId = present_id;
 
 	while ( !acquire_next_image() )
 		vulkan_remake_swapchain();
