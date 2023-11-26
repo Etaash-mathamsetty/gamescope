@@ -2694,12 +2694,11 @@ void vulkan_present_to_window( void )
 
 		if ( g_device.vk.QueuePresentKHR( g_device.queue(), &presentInfo ) != VK_SUCCESS )
 			vulkan_remake_swapchain(&output);
+		while ( !acquire_next_image(&output) )
+			vulkan_remake_swapchain(&output);
 	}
 
 	g_currentPresentWaitId = present_id;
-
-	while ( !acquire_next_image() )
-		vulkan_remake_swapchain();
 }
 
 std::shared_ptr<CVulkanTexture> vulkan_create_1d_lut(uint32_t size)
