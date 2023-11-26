@@ -2671,6 +2671,8 @@ void vulkan_present_to_window( void )
 	//get present id for first output
 	uint64_t present_id = s_lastPresentId + 1;
 
+	bool first = true;
+
 	for(VulkanOutput_t& output : g_outputs)
 	{
 		// indices.push_back(output.nOutImage);
@@ -2692,13 +2694,20 @@ void vulkan_present_to_window( void )
 			.pImageIndices = &output.nOutImage,
 		};
 
-		if ( g_device.vk.QueuePresentKHR( g_device.queue(), &presentInfo ) != VK_SUCCESS )
+		if ( g_device.vk.QueuePresentKHR( g_device.queue(), &presentInfo ) == VK_SUCCESS )
+		{
+			if ( first )
+			{
+				first = false;
+				g_currentPresentWaitId = present_id;
+			}
+		}
+		else
 			vulkan_remake_swapchain(&output);
+		
 		while ( !acquire_next_image(&output) )
 			vulkan_remake_swapchain(&output);
 	}
-
-	g_currentPresentWaitId = present_id;
 }
 
 std::shared_ptr<CVulkanTexture> vulkan_create_1d_lut(uint32_t size)
