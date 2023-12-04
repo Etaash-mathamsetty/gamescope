@@ -3080,6 +3080,10 @@ bool vulkan_make_output( std::vector<VkSurfaceKHR> surfaces )
 			pOutput->surface = surfaces[i];
 
 			SDL_GetWindowSize( g_SDLWindows[i], &pOutput->width, &pOutput->height );
+			SDL_GetWindowPosition( g_SDLWindows[i], &pOutput->x, &pOutput->y );
+
+			//positions are correct, proceed with phase 2
+			//printf("window %ld %d %d %d %d\n", i, pOutput->x, pOutput->y, pOutput->width, pOutput->height);
 
 			result = g_device.vk.GetPhysicalDeviceSurfaceCapabilitiesKHR( g_device.physDev(), pOutput->surface, &pOutput->surfaceCaps );
 			if ( result != VK_SUCCESS )

@@ -500,8 +500,11 @@ struct VulkanOutput_t
 	std::shared_ptr<CVulkanTexture> nisScalerImage;
 	std::shared_ptr<CVulkanTexture> nisUsmImage;
 
+	// for multi-display
 	int width;
 	int height;
+	int x;
+	int y;
 };
 
 
