@@ -3658,185 +3658,185 @@ bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTex
 
 	for(VulkanOutput_t& output : g_outputs)
 	{
-	auto compositeImage = partial ? output.outputImagesPartialOverlay[ output.nOutImage ] : output.outputImages[ output.nOutImage ];
+		auto compositeImage = partial ? output.outputImagesPartialOverlay[ output.nOutImage ] : output.outputImages[ output.nOutImage ];
 
-	for (uint32_t i = 0; i < EOTF_Count; i++)
-		cmdBuffer->bindColorMgmtLuts(i, frameInfo->shaperLut[i], frameInfo->lut3D[i]);
+		for (uint32_t i = 0; i < EOTF_Count; i++)
+			cmdBuffer->bindColorMgmtLuts(i, frameInfo->shaperLut[i], frameInfo->lut3D[i]);
 
-	if ( frameInfo->useFSRLayer0 )
-	{
-		uint32_t inputX = frameInfo->layers[0].tex->width();
-		uint32_t inputY = frameInfo->layers[0].tex->height();
-
-		uint32_t tempX = frameInfo->layers[0].integerWidth();
-		uint32_t tempY = frameInfo->layers[0].integerHeight();
-
-		update_tmp_images(&output, tempX, tempY);
-
-		cmdBuffer->bindPipeline(g_device.pipeline(SHADER_TYPE_EASU));
-		cmdBuffer->bindTarget(output.tmpOutput);
-		cmdBuffer->bindTexture(0, frameInfo->layers[0].tex);
-		cmdBuffer->setTextureSrgb(0, true);
-		cmdBuffer->setSamplerUnnormalized(0, false);
-		cmdBuffer->setSamplerNearest(0, false);
-		cmdBuffer->uploadConstants<EasuPushData_t>(inputX, inputY, tempX, tempY);
-
-		int pixelsPerGroup = 16;
-
-		cmdBuffer->dispatch(div_roundup(tempX, pixelsPerGroup), div_roundup(tempY, pixelsPerGroup));
-
-		cmdBuffer->bindPipeline(g_device.pipeline(SHADER_TYPE_RCAS, frameInfo->layerCount, frameInfo->ycbcrMask() & ~1, 0u, frameInfo->colorspaceMask(), outputTF ));
-		bind_all_layers(cmdBuffer.get(), frameInfo);
-		cmdBuffer->bindTexture(0, output.tmpOutput);
-		cmdBuffer->setTextureSrgb(0, true);
-		cmdBuffer->setSamplerUnnormalized(0, false);
-		cmdBuffer->setSamplerNearest(0, false);
-		cmdBuffer->bindTarget(compositeImage);
-		cmdBuffer->uploadConstants<RcasPushData_t>(frameInfo, g_upscaleFilterSharpness / 10.0f);
-
-		cmdBuffer->dispatch(div_roundup(currentOutputWidth, pixelsPerGroup), div_roundup(currentOutputHeight, pixelsPerGroup));
-	}
-	else if ( frameInfo->useNISLayer0 )
-	{
-		uint32_t inputX = frameInfo->layers[0].tex->width();
-		uint32_t inputY = frameInfo->layers[0].tex->height();
-
-		uint32_t tempX = frameInfo->layers[0].integerWidth();
-		uint32_t tempY = frameInfo->layers[0].integerHeight();
-
-		update_tmp_images(&output, tempX, tempY);
-
-		float nisSharpness = (20 - g_upscaleFilterSharpness) / 20.0f;
-
-		cmdBuffer->bindPipeline(g_device.pipeline(SHADER_TYPE_NIS));
-		cmdBuffer->bindTarget(output.tmpOutput);
-		cmdBuffer->bindTexture(0, frameInfo->layers[0].tex);
-		cmdBuffer->setTextureSrgb(0, true);
-		cmdBuffer->setSamplerUnnormalized(0, false);
-		cmdBuffer->setSamplerNearest(0, false);
-		cmdBuffer->bindTexture(VKR_NIS_COEF_SCALER_SLOT, output.nisScalerImage);
-		cmdBuffer->setSamplerUnnormalized(VKR_NIS_COEF_SCALER_SLOT, false);
-		cmdBuffer->setSamplerNearest(VKR_NIS_COEF_SCALER_SLOT, false);
-		cmdBuffer->bindTexture(VKR_NIS_COEF_USM_SLOT, output.nisUsmImage);
-		cmdBuffer->setSamplerUnnormalized(VKR_NIS_COEF_USM_SLOT, false);
-		cmdBuffer->setSamplerNearest(VKR_NIS_COEF_USM_SLOT, false);
-		cmdBuffer->uploadConstants<NisPushData_t>(inputX, inputY, tempX, tempY, nisSharpness);
-
-		int pixelsPerGroupX = 32;
-		int pixelsPerGroupY = 24;
-
-		cmdBuffer->dispatch(div_roundup(tempX, pixelsPerGroupX), div_roundup(tempY, pixelsPerGroupY));
-
-		struct FrameInfo_t nisFrameInfo = *frameInfo;
-		nisFrameInfo.layers[0].tex = output.tmpOutput;
-		nisFrameInfo.layers[0].scale.x = 1.0f;
-		nisFrameInfo.layers[0].scale.y = 1.0f;
-
-		cmdBuffer->bindPipeline( g_device.pipeline(SHADER_TYPE_BLIT, nisFrameInfo.layerCount, nisFrameInfo.ycbcrMask()));
-		bind_all_layers(cmdBuffer.get(), &nisFrameInfo);
-		cmdBuffer->bindTarget(compositeImage);
-		cmdBuffer->uploadConstants<BlitPushData_t>(&nisFrameInfo);
-
-		int pixelsPerGroup = 8;
-
-		cmdBuffer->dispatch(div_roundup(currentOutputWidth, pixelsPerGroup), div_roundup(currentOutputHeight, pixelsPerGroup));
-	}
-	else if ( frameInfo->blurLayer0 )
-	{
-		update_tmp_images(&output, currentOutputWidth, currentOutputHeight);
-
-		ShaderType type = SHADER_TYPE_BLUR_FIRST_PASS;
-
-		uint32_t blur_layer_count = 1;
-		// Also blur the override on top if we have one.
-		if (frameInfo->layerCount >= 2 && frameInfo->layers[1].zpos == g_zposOverride)
-			blur_layer_count++;
-
-		cmdBuffer->bindPipeline(g_device.pipeline(type, blur_layer_count, frameInfo->ycbcrMask() & 0x3u, 0, frameInfo->colorspaceMask(), outputTF ));
-		cmdBuffer->bindTarget(output.tmpOutput);
-		for (uint32_t i = 0; i < blur_layer_count; i++)
+		if ( frameInfo->useFSRLayer0 )
 		{
-			cmdBuffer->bindTexture(i, frameInfo->layers[i].tex);
-			cmdBuffer->setTextureSrgb(i, false);
-			cmdBuffer->setSamplerUnnormalized(i, true);
-			cmdBuffer->setSamplerNearest(i, false);
-		}
-		cmdBuffer->uploadConstants<BlitPushData_t>(frameInfo);
+			uint32_t inputX = frameInfo->layers[0].tex->width();
+			uint32_t inputY = frameInfo->layers[0].tex->height();
 
-		int pixelsPerGroup = 8;
+			uint32_t tempX = frameInfo->layers[0].integerWidth();
+			uint32_t tempY = frameInfo->layers[0].integerHeight();
 
-		cmdBuffer->dispatch(div_roundup(currentOutputWidth, pixelsPerGroup), div_roundup(currentOutputHeight, pixelsPerGroup));
+			update_tmp_images(&output, tempX, tempY);
 
-		bool useSrgbView = frameInfo->layers[0].colorspace == GAMESCOPE_APP_TEXTURE_COLORSPACE_LINEAR;
-
-		type = frameInfo->blurLayer0 == BLUR_MODE_COND ? SHADER_TYPE_BLUR_COND : SHADER_TYPE_BLUR;
-		cmdBuffer->bindPipeline(g_device.pipeline(type, frameInfo->layerCount, frameInfo->ycbcrMask(), blur_layer_count, frameInfo->colorspaceMask(), outputTF ));
-		bind_all_layers(cmdBuffer.get(), frameInfo);
-		cmdBuffer->bindTarget(compositeImage);
-		cmdBuffer->bindTexture(VKR_BLUR_EXTRA_SLOT, output.tmpOutput);
-		cmdBuffer->setTextureSrgb(VKR_BLUR_EXTRA_SLOT, !useSrgbView); // Inverted because it chooses whether to view as linear (sRGB view) or sRGB (raw view). It's horrible. I need to change it.
-		cmdBuffer->setSamplerUnnormalized(VKR_BLUR_EXTRA_SLOT, true);
-		cmdBuffer->setSamplerNearest(VKR_BLUR_EXTRA_SLOT, false);
-
-		cmdBuffer->dispatch(div_roundup(currentOutputWidth, pixelsPerGroup), div_roundup(currentOutputHeight, pixelsPerGroup));
-	}
-	else
-	{
-		cmdBuffer->bindPipeline( g_device.pipeline(SHADER_TYPE_BLIT, frameInfo->layerCount, frameInfo->ycbcrMask(), 0u, frameInfo->colorspaceMask(), outputTF ));
-		bind_all_layers(cmdBuffer.get(), frameInfo);
-		cmdBuffer->bindTarget(compositeImage);
-		cmdBuffer->uploadConstants<BlitPushData_t>(frameInfo);
-
-		const int pixelsPerGroup = 8;
-
-		cmdBuffer->dispatch(div_roundup(currentOutputWidth, pixelsPerGroup), div_roundup(currentOutputHeight, pixelsPerGroup));
-	}
-
-	if ( pPipewireTexture != nullptr )
-	{
-		if (compositeImage->format() == pPipewireTexture->format() &&
-			compositeImage->width() == pPipewireTexture->width() &&
-		    compositeImage->height() == pPipewireTexture->height()) {
-			cmdBuffer->copyImage(compositeImage, pPipewireTexture);
-		} else {
-			const bool ycbcr = pPipewireTexture->isYcbcr();
-
-			float scale = (float)compositeImage->width() / pPipewireTexture->width();
-			if ( ycbcr )
-			{
-				CaptureConvertBlitData_t constants( scale, colorspace_to_conversion_from_srgb_matrix( compositeImage->streamColorspace() ) );
-				constants.halfExtent[0] = pPipewireTexture->width() / 2.0f;
-				constants.halfExtent[1] = pPipewireTexture->height() / 2.0f;
-				cmdBuffer->uploadConstants<CaptureConvertBlitData_t>(constants);
-			}
-			else
-			{
-				BlitPushData_t constants( scale );
-				cmdBuffer->uploadConstants<BlitPushData_t>(constants);
-			}
-
-			for (uint32_t i = 0; i < EOTF_Count; i++)
-				cmdBuffer->bindColorMgmtLuts(i, nullptr, nullptr);
-
-			cmdBuffer->bindPipeline(g_device.pipeline( ycbcr ? SHADER_TYPE_RGB_TO_NV12 : SHADER_TYPE_BLIT, 1, 0, 0, GAMESCOPE_APP_TEXTURE_COLORSPACE_SRGB, EOTF_Gamma22 ));
-			cmdBuffer->bindTexture(0, compositeImage);
+			cmdBuffer->bindPipeline(g_device.pipeline(SHADER_TYPE_EASU));
+			cmdBuffer->bindTarget(output.tmpOutput);
+			cmdBuffer->bindTexture(0, frameInfo->layers[0].tex);
 			cmdBuffer->setTextureSrgb(0, true);
+			cmdBuffer->setSamplerUnnormalized(0, false);
 			cmdBuffer->setSamplerNearest(0, false);
-			cmdBuffer->setSamplerUnnormalized(0, true);
-			for (uint32_t i = 1; i < VKR_SAMPLER_SLOTS; i++)
+			cmdBuffer->uploadConstants<EasuPushData_t>(inputX, inputY, tempX, tempY);
+
+			int pixelsPerGroup = 16;
+
+			cmdBuffer->dispatch(div_roundup(tempX, pixelsPerGroup), div_roundup(tempY, pixelsPerGroup));
+
+			cmdBuffer->bindPipeline(g_device.pipeline(SHADER_TYPE_RCAS, frameInfo->layerCount, frameInfo->ycbcrMask() & ~1, 0u, frameInfo->colorspaceMask(), outputTF ));
+			bind_all_layers(cmdBuffer.get(), frameInfo);
+			cmdBuffer->bindTexture(0, output.tmpOutput);
+			cmdBuffer->setTextureSrgb(0, true);
+			cmdBuffer->setSamplerUnnormalized(0, false);
+			cmdBuffer->setSamplerNearest(0, false);
+			cmdBuffer->bindTarget(compositeImage);
+			cmdBuffer->uploadConstants<RcasPushData_t>(frameInfo, g_upscaleFilterSharpness / 10.0f);
+
+			cmdBuffer->dispatch(div_roundup(currentOutputWidth, pixelsPerGroup), div_roundup(currentOutputHeight, pixelsPerGroup));
+		}
+		else if ( frameInfo->useNISLayer0 )
+		{
+			uint32_t inputX = frameInfo->layers[0].tex->width();
+			uint32_t inputY = frameInfo->layers[0].tex->height();
+
+			uint32_t tempX = frameInfo->layers[0].integerWidth();
+			uint32_t tempY = frameInfo->layers[0].integerHeight();
+
+			update_tmp_images(&output, tempX, tempY);
+
+			float nisSharpness = (20 - g_upscaleFilterSharpness) / 20.0f;
+
+			cmdBuffer->bindPipeline(g_device.pipeline(SHADER_TYPE_NIS));
+			cmdBuffer->bindTarget(output.tmpOutput);
+			cmdBuffer->bindTexture(0, frameInfo->layers[0].tex);
+			cmdBuffer->setTextureSrgb(0, true);
+			cmdBuffer->setSamplerUnnormalized(0, false);
+			cmdBuffer->setSamplerNearest(0, false);
+			cmdBuffer->bindTexture(VKR_NIS_COEF_SCALER_SLOT, output.nisScalerImage);
+			cmdBuffer->setSamplerUnnormalized(VKR_NIS_COEF_SCALER_SLOT, false);
+			cmdBuffer->setSamplerNearest(VKR_NIS_COEF_SCALER_SLOT, false);
+			cmdBuffer->bindTexture(VKR_NIS_COEF_USM_SLOT, output.nisUsmImage);
+			cmdBuffer->setSamplerUnnormalized(VKR_NIS_COEF_USM_SLOT, false);
+			cmdBuffer->setSamplerNearest(VKR_NIS_COEF_USM_SLOT, false);
+			cmdBuffer->uploadConstants<NisPushData_t>(inputX, inputY, tempX, tempY, nisSharpness);
+
+			int pixelsPerGroupX = 32;
+			int pixelsPerGroupY = 24;
+
+			cmdBuffer->dispatch(div_roundup(tempX, pixelsPerGroupX), div_roundup(tempY, pixelsPerGroupY));
+
+			struct FrameInfo_t nisFrameInfo = *frameInfo;
+			nisFrameInfo.layers[0].tex = output.tmpOutput;
+			nisFrameInfo.layers[0].scale.x = 1.0f;
+			nisFrameInfo.layers[0].scale.y = 1.0f;
+
+			cmdBuffer->bindPipeline( g_device.pipeline(SHADER_TYPE_BLIT, nisFrameInfo.layerCount, nisFrameInfo.ycbcrMask()));
+			bind_all_layers(cmdBuffer.get(), &nisFrameInfo);
+			cmdBuffer->bindTarget(compositeImage);
+			cmdBuffer->uploadConstants<BlitPushData_t>(&nisFrameInfo);
+
+			int pixelsPerGroup = 8;
+
+			cmdBuffer->dispatch(div_roundup(currentOutputWidth, pixelsPerGroup), div_roundup(currentOutputHeight, pixelsPerGroup));
+		}
+		else if ( frameInfo->blurLayer0 )
+		{
+			update_tmp_images(&output, currentOutputWidth, currentOutputHeight);
+
+			ShaderType type = SHADER_TYPE_BLUR_FIRST_PASS;
+
+			uint32_t blur_layer_count = 1;
+			// Also blur the override on top if we have one.
+			if (frameInfo->layerCount >= 2 && frameInfo->layers[1].zpos == g_zposOverride)
+				blur_layer_count++;
+
+			cmdBuffer->bindPipeline(g_device.pipeline(type, blur_layer_count, frameInfo->ycbcrMask() & 0x3u, 0, frameInfo->colorspaceMask(), outputTF ));
+			cmdBuffer->bindTarget(output.tmpOutput);
+			for (uint32_t i = 0; i < blur_layer_count; i++)
 			{
-				cmdBuffer->bindTexture(i, nullptr);
+				cmdBuffer->bindTexture(i, frameInfo->layers[i].tex);
+				cmdBuffer->setTextureSrgb(i, false);
+				cmdBuffer->setSamplerUnnormalized(i, true);
+				cmdBuffer->setSamplerNearest(i, false);
 			}
-			cmdBuffer->bindTarget(pPipewireTexture);
+			cmdBuffer->uploadConstants<BlitPushData_t>(frameInfo);
+
+			int pixelsPerGroup = 8;
+
+			cmdBuffer->dispatch(div_roundup(currentOutputWidth, pixelsPerGroup), div_roundup(currentOutputHeight, pixelsPerGroup));
+
+			bool useSrgbView = frameInfo->layers[0].colorspace == GAMESCOPE_APP_TEXTURE_COLORSPACE_LINEAR;
+
+			type = frameInfo->blurLayer0 == BLUR_MODE_COND ? SHADER_TYPE_BLUR_COND : SHADER_TYPE_BLUR;
+			cmdBuffer->bindPipeline(g_device.pipeline(type, frameInfo->layerCount, frameInfo->ycbcrMask(), blur_layer_count, frameInfo->colorspaceMask(), outputTF ));
+			bind_all_layers(cmdBuffer.get(), frameInfo);
+			cmdBuffer->bindTarget(compositeImage);
+			cmdBuffer->bindTexture(VKR_BLUR_EXTRA_SLOT, output.tmpOutput);
+			cmdBuffer->setTextureSrgb(VKR_BLUR_EXTRA_SLOT, !useSrgbView); // Inverted because it chooses whether to view as linear (sRGB view) or sRGB (raw view). It's horrible. I need to change it.
+			cmdBuffer->setSamplerUnnormalized(VKR_BLUR_EXTRA_SLOT, true);
+			cmdBuffer->setSamplerNearest(VKR_BLUR_EXTRA_SLOT, false);
+
+			cmdBuffer->dispatch(div_roundup(currentOutputWidth, pixelsPerGroup), div_roundup(currentOutputHeight, pixelsPerGroup));
+		}
+		else
+		{
+			cmdBuffer->bindPipeline( g_device.pipeline(SHADER_TYPE_BLIT, frameInfo->layerCount, frameInfo->ycbcrMask(), 0u, frameInfo->colorspaceMask(), outputTF ));
+			bind_all_layers(cmdBuffer.get(), frameInfo);
+			cmdBuffer->bindTarget(compositeImage);
+			cmdBuffer->uploadConstants<BlitPushData_t>(frameInfo);
 
 			const int pixelsPerGroup = 8;
 
-			// For ycbcr, we operate on 2 pixels at a time, so use the half-extent.
-			const int dispatchSize = ycbcr ? pixelsPerGroup * 2 : pixelsPerGroup;
-
-			cmdBuffer->dispatch(div_roundup(pPipewireTexture->width(), dispatchSize), div_roundup(pPipewireTexture->height(), dispatchSize));
+			cmdBuffer->dispatch(div_roundup(currentOutputWidth, pixelsPerGroup), div_roundup(currentOutputHeight, pixelsPerGroup));
 		}
-	}
+
+		if ( pPipewireTexture != nullptr )
+		{
+			if (compositeImage->format() == pPipewireTexture->format() &&
+				compositeImage->width() == pPipewireTexture->width() &&
+				compositeImage->height() == pPipewireTexture->height()) {
+				cmdBuffer->copyImage(compositeImage, pPipewireTexture);
+			} else {
+				const bool ycbcr = pPipewireTexture->isYcbcr();
+
+				float scale = (float)compositeImage->width() / pPipewireTexture->width();
+				if ( ycbcr )
+				{
+					CaptureConvertBlitData_t constants( scale, colorspace_to_conversion_from_srgb_matrix( compositeImage->streamColorspace() ) );
+					constants.halfExtent[0] = pPipewireTexture->width() / 2.0f;
+					constants.halfExtent[1] = pPipewireTexture->height() / 2.0f;
+					cmdBuffer->uploadConstants<CaptureConvertBlitData_t>(constants);
+				}
+				else
+				{
+					BlitPushData_t constants( scale );
+					cmdBuffer->uploadConstants<BlitPushData_t>(constants);
+				}
+
+				for (uint32_t i = 0; i < EOTF_Count; i++)
+					cmdBuffer->bindColorMgmtLuts(i, nullptr, nullptr);
+
+				cmdBuffer->bindPipeline(g_device.pipeline( ycbcr ? SHADER_TYPE_RGB_TO_NV12 : SHADER_TYPE_BLIT, 1, 0, 0, GAMESCOPE_APP_TEXTURE_COLORSPACE_SRGB, EOTF_Gamma22 ));
+				cmdBuffer->bindTexture(0, compositeImage);
+				cmdBuffer->setTextureSrgb(0, true);
+				cmdBuffer->setSamplerNearest(0, false);
+				cmdBuffer->setSamplerUnnormalized(0, true);
+				for (uint32_t i = 1; i < VKR_SAMPLER_SLOTS; i++)
+				{
+					cmdBuffer->bindTexture(i, nullptr);
+				}
+				cmdBuffer->bindTarget(pPipewireTexture);
+
+				const int pixelsPerGroup = 8;
+
+				// For ycbcr, we operate on 2 pixels at a time, so use the half-extent.
+				const int dispatchSize = ycbcr ? pixelsPerGroup * 2 : pixelsPerGroup;
+
+				cmdBuffer->dispatch(div_roundup(pPipewireTexture->width(), dispatchSize), div_roundup(pPipewireTexture->height(), dispatchSize));
+			}
+		}
 
 	}
 
