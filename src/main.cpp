@@ -783,7 +783,7 @@ int main(int argc, char **argv)
 		for(SDL_Window *window : g_SDLWindows)
 		{
 			surfaces.push_back(VK_NULL_HANDLE);
-			if( !SDL_Vulkan_CreateSurface( window, instance, &surfaces[surfaces.size() - 1] ))
+			if( !SDL_Vulkan_CreateSurface( window, instance, &surfaces.back() ))
 			{
 				fprintf(stderr, "SDL_Vulkan_CreateSurface failed: %s", SDL_GetError() );
 				return 1;

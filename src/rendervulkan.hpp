@@ -499,6 +499,9 @@ struct VulkanOutput_t
 	// NIS
 	std::shared_ptr<CVulkanTexture> nisScalerImage;
 	std::shared_ptr<CVulkanTexture> nisUsmImage;
+
+	int width;
+	int height;
 };
 
 

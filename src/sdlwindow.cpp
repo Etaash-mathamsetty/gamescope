@@ -122,12 +122,19 @@ void updateOutputResolution( void )
 		int highest_y_px = -INT32_MAX;
 	#endif
 
-		for(SDL_Window* display : g_SDLWindows)
+		for(int i = 0; i < g_SDLWindows.size(); i++)
 		{
+			SDL_Window* display = g_SDLWindows[i];
 			int x, y;
 			int width, height;
 			SDL_GetWindowPosition( display, &x, &y );
 			SDL_GetWindowSize( display, &width, &height);
+
+			if(i < g_outputs.size())
+			{
+				g_outputs[i].width = width;
+				g_outputs[i].height = height;
+			}
 
 			if ( x < lowest_x )
 				lowest_x = x;
@@ -146,6 +153,12 @@ void updateOutputResolution( void )
 				highest_x_px = x + width;
 			if ( (y + height) > highest_y_px )
 				highest_y_px = y + height;
+
+			if(i < g_outputs.size())
+			{
+				g_outputs[i].width = width;
+				g_outputs[i].height = height;
+			}
 		#endif
 		}
 

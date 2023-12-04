@@ -2885,8 +2885,8 @@ bool vulkan_make_swapchain( VulkanOutput_t *pOutput )
 		.imageFormat = pOutput->outputFormat,
 		.imageColorSpace = pOutput->surfaceFormats[surfaceFormat].colorSpace,
 		.imageExtent = {
-			.width = g_nOutputWidth,
-			.height = g_nOutputHeight,
+			.width = pOutput->width,
+			.height = pOutput->height,
 		},
 		.imageArrayLayers = 1,
 		.imageUsage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
@@ -3078,6 +3078,8 @@ bool vulkan_make_output( std::vector<VkSurfaceKHR> surfaces )
 		{
 			assert(surfaces[i]);
 			pOutput->surface = surfaces[i];
+
+			SDL_GetWindowSize( g_SDLWindows[i], &pOutput->width, &pOutput->height );
 
 			result = g_device.vk.GetPhysicalDeviceSurfaceCapabilitiesKHR( g_device.physDev(), pOutput->surface, &pOutput->surfaceCaps );
 			if ( result != VK_SUCCESS )
