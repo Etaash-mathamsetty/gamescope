@@ -3782,6 +3782,8 @@ bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTex
 		}
 		else
 		{
+			frameInfo->layers[0].offset.x = output.x;
+			frameInfo->layers[0].offset.y = output.y;
 			cmdBuffer->bindPipeline( g_device.pipeline(SHADER_TYPE_BLIT, frameInfo->layerCount, frameInfo->ycbcrMask(), 0u, frameInfo->colorspaceMask(), outputTF ));
 			bind_all_layers(cmdBuffer.get(), frameInfo);
 			cmdBuffer->bindTarget(compositeImage);
@@ -3789,7 +3791,7 @@ bool vulkan_composite( struct FrameInfo_t *frameInfo, std::shared_ptr<CVulkanTex
 
 			const int pixelsPerGroup = 8;
 
-			cmdBuffer->dispatch(div_roundup(currentOutputWidth, pixelsPerGroup), div_roundup(currentOutputHeight, pixelsPerGroup));
+			cmdBuffer->dispatch(div_roundup(output.width, pixelsPerGroup), div_roundup(output.height, pixelsPerGroup));
 		}
 
 		if ( pPipewireTexture != nullptr )

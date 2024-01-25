@@ -1,6 +1,8 @@
 #include "color_helpers.h"
 #include <cstdio>
 
+#define GLM_ENABLE_EXPERIMENTAL
+
 #include <glm/ext.hpp>
 #include <glm/gtx/string_cast.hpp>
 
